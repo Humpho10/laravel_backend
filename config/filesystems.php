@@ -40,7 +40,11 @@ return [
 
         'public' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
+            // Points directly into the webroot instead of storage/app/public
+            // + a public/storage symlink — some shared hosts block Apache
+            // from following that symlink (403 on every upload), so files
+            // are written straight into a real, directly-servable folder.
+            'root' => public_path('storage'),
             'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
             'visibility' => 'public',
             'throw' => false,
