@@ -42,6 +42,10 @@ class StatsController extends Controller
             // has turned off, instead of letting the user hit a 403/503.
             'allow_google_login'        => $settings->allow_google_login,
             'allow_public_registration' => $settings->allow_public_registration,
+            // Lets the "Add Photos" step cap uploads client-side to whatever
+            // the Super Admin has configured, instead of a hardcoded number
+            // that drifts from the server-side validation in ProductController.
+            'max_images_per_listing'    => $settings->max_images_per_listing,
         ]);
     }
 }
