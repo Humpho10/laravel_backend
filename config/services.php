@@ -39,4 +39,9 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
     ],
 
+    'huggingface' => [
+        'token' => env('HUGGINGFACE_API_TOKEN'),
+        'vision_model' => env('HUGGINGFACE_VISION_MODEL', 'google/vit-base-patch16-224'),
+    ],
+
 ];

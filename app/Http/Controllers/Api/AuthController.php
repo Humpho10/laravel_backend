@@ -14,10 +14,14 @@ use App\Mail\PasswordResetOtpMail;
 use App\Models\EmailVerification;
 use App\Mail\VerifyEmailMail;
 use Illuminate\Support\Facades\Mail;
+use App\Helpers\Mailer;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Str;
 use App\Models\Settings;
 use Illuminate\Support\Facades\RateLimiter;
+use App\Helpers\EmailVerifier;
 
 class AuthController extends Controller
 {
@@ -100,7 +104,12 @@ class AuthController extends Controller
             ], 403);
         }
 
-        if ($settings->require_email_verification && !$user->email_verified_at) {
+        // Staff accounts (Admin, Product-Manager) must always verify their
+        // email before first login, regardless of the site-wide toggle —
+        // that toggle only governs public buyer/seller registration.
+        $requiresVerification = $settings->require_email_verification || $user->hasAnyRole(['Admin', 'Product-Manager']);
+
+        if ($requiresVerification && !$user->email_verified_at) {
             return response()->json([
                 'message' => 'Please verify your email address before signing in. Check your inbox for the verification link.',
                 'email_unverified' => true,
@@ -177,9 +186,23 @@ class AuthController extends Controller
 
         // Verify the ID token with Google's tokeninfo endpoint — avoids needing
         // a full OAuth library just to validate a signed JWT.
-        $response = Http::get('https://oauth2.googleapis.com/tokeninfo', [
-            'id_token' => $request->credential,
-        ]);
+        try {
+            $response = Http::timeout(10)
+                ->connectTimeout(5)
+                ->retry(2, 200, fn ($e) => $e instanceof ConnectionException, throw: false)
+                ->get('https://oauth2.googleapis.com/tokeninfo', [
+                    'id_token' => $request->credential,
+                ]);
+        } catch (ConnectionException $e) {
+            // Guzzle appends the failing URL to its message, which carries the
+            // caller's live id_token — redact it before this reaches the log.
+            $reason = preg_replace('/id_token=[\w.\-]+/', 'id_token=[redacted]', $e->getMessage());
+            Log::error('Google tokeninfo unreachable: ' . $reason);
+
+            return response()->json([
+                'message' => 'Could not reach Google to verify your sign-in. Please try again in a moment.',
+            ], 503);
+        }
 
         if (!$response->ok()) {
             return response()->json([
@@ -295,7 +318,7 @@ class AuthController extends Controller
                 'expires_at' => now()->addSeconds($expiresInSeconds),
             ]);
 
-            Mail::to($request->email)->send(new PasswordResetOtpMail($otp));
+            Mailer::send($request->email, new PasswordResetOtpMail($otp));
         }
 
         return response()->json([
@@ -384,19 +407,29 @@ class AuthController extends Controller
         return response()->json(['message' => 'Verification email sent.']);
     }
 
+    // Public — resend the verification link by email, no auth required.
+    // Mirrors forgotPassword()'s non-enumerating pattern: someone blocked at
+    // login for being unverified has no auth token to call the authenticated
+    // resend endpoint above with, so this is the only way they can recover
+    // a lost or expired link.
+    public function resendVerificationPublic(Request $request)
+    {
+        $request->validate(['email' => 'required|email']);
+
+        $user = User::where('email', $request->email)->first();
+
+        if ($user && !$user->email_verified_at) {
+            EmailVerifier::send($user);
+        }
+
+        return response()->json([
+            'message' => 'If that email exists and needs verifying, a new link has been sent.',
+        ]);
+    }
+
     // Generate a fresh verification token for the user and email it to them.
     private function sendVerificationEmail(User $user): void
     {
-        EmailVerification::where('email', $user->email)->delete();
-
-        $token = Str::random(64);
-
-        EmailVerification::create([
-            'email'      => $user->email,
-            'token'      => $token,
-            'expires_at' => now()->addHours(24),
-        ]);
-
-        Mail::to($user->email)->send(new VerifyEmailMail($user->name, $token));
+        EmailVerifier::send($user);
     }
 }

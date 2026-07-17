@@ -9,10 +9,11 @@ use App\Http\Controllers\ProductManagerController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\StaffMessageController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ContactMessageController;
 use App\Http\Controllers\SellerRatingController;
+use App\Http\Controllers\ImageSearchController;
 
 // ── Auth ──────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
@@ -22,6 +23,7 @@ Route::prefix('auth')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']); // ← new
     Route::post('/reset-password',  [AuthController::class, 'resetPassword']);  // ← new
     Route::post('/verify-email',    [AuthController::class, 'verifyEmail']);    // ← new
+    Route::post('/resend-verification-public', [AuthController::class, 'resendVerificationPublic']);
 });
 
 Route::middleware('auth:sanctum')->prefix('auth')->group(function () {
@@ -44,6 +46,10 @@ Route::get('/settings/public', [StatsController::class, 'publicSettings']);
 
 // Contact page — rate-limited (5/min per IP) since it's unauthenticated.
 Route::post('/contact', [ContactController::class, 'send'])->middleware('throttle:5,1');
+
+// Photo search (homepage camera button) — rate-limited since it calls a
+// third-party API (Hugging Face) per request.
+Route::post('/search/image', [ImageSearchController::class, 'search'])->middleware('throttle:5,1');
 
 // ── SUPER ADMIN ROUTES ───────────────────────────────────────
 // These require permissions that only Super Admin has (or anyone with these specific permissions)
@@ -83,11 +89,6 @@ Route::middleware(['auth:sanctum', 'check.permissions:user-list,role-list,permis
     // ── Audit ──────────────────────────────────────────────
     Route::get('/audit',               [AdminController::class, 'getAuditTrail'])->middleware('can:audit-list');
     Route::get('/audit/export',        [AdminController::class, 'exportAuditTrail'])->middleware('can:audit-list');
-
-    // NOTE: Super Admin no longer has read access to buyer/seller
-    // conversations — that "platform-wide oversight" endpoint was retired.
-    // Super Admin messaging is now staff-only; see the staff-messages
-    // routes below (StaffMessageController), used from /admin/messages.
 
     // ── System Settings ──────────────────────────────────────
     Route::get('/settings',  [AdminController::class, 'getSettings']);
@@ -140,6 +141,11 @@ Route::middleware(['auth:sanctum', 'check.permissions:category-list,product-list
 
     // ── Messages ───────────────────────────────────────────
     Route::get('/manager/messages', [ManagerController::class, 'getMessages'])->middleware('can:message-view');
+
+    // ── Contact Messages ───────────────────────────────────
+    Route::get('/contact-messages',             [ContactMessageController::class, 'index'])->middleware('can:contact-view');
+    Route::get('/contact-messages/{id}',        [ContactMessageController::class, 'show'])->middleware('can:contact-view');
+    Route::post('/contact-messages/{id}/reply', [ContactMessageController::class, 'reply'])->middleware('can:contact-reply');
 });
 
 // ── PRODUCT MANAGER ROUTES ──────────────────────────────────
@@ -200,16 +206,6 @@ Route::middleware('auth:sanctum')->prefix('messages')->group(function () {
     Route::get('/thread/{otherId}',  [MessageController::class, 'show'])->middleware('can:message-view');
     Route::post('/',                 [MessageController::class, 'send'])->middleware('can:message-send');
     Route::patch('/{id}/read',       [MessageController::class, 'markRead'])->middleware('can:message-view');
-});
-
-// ── STAFF MESSAGES (Super Admin ↔ Admin / Product-Manager) ────
-// Internal chat only — never touches buyer/seller conversations.
-Route::middleware('auth:sanctum')->prefix('staff-messages')->group(function () {
-    Route::get('/contacts',      [StaffMessageController::class, 'contacts']);
-    Route::get('/conversations', [StaffMessageController::class, 'conversations']);
-    Route::get('/unread-count',  [StaffMessageController::class, 'unreadCount']);
-    Route::get('/{userId}',      [StaffMessageController::class, 'thread'])->whereNumber('userId');
-    Route::post('/',             [StaffMessageController::class, 'send']);
 });
 
 // ── NOTIFICATIONS (Authenticated Users) ──────────────────────

@@ -166,14 +166,19 @@ class ProductController extends Controller
             return response()->json(['message' => 'Unauthorized. You do not have permission to create products.'], 403);
         }
 
-        if (!$this->user->email_verified_at) {
+        $settings = Settings::current();
+
+        // Only block unverified sellers when the platform actually requires
+        // email verification — consistent with login (AuthController::login).
+        // Otherwise an admin who leaves verification off (e.g. because the
+        // mail server is unreliable) would silently trap every new seller,
+        // able to log in but never able to post.
+        if ($settings->require_email_verification && !$this->user->email_verified_at) {
             return response()->json([
                 'message'          => 'Please verify your email address before creating a listing.',
                 'email_unverified' => true,
             ], 403);
         }
-
-        $settings = Settings::current();
 
         $priceRule = ['required', 'numeric', 'min:' . ($settings->min_listing_price ?? 0)];
         if ($settings->max_listing_price) {

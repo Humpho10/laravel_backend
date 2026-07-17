@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
+use App\Helpers\Mailer;
 use App\Mail\ProductApprovedMail;
 use App\Mail\ProductRejectedMail;
 
@@ -363,9 +364,7 @@ class ProductManagerController extends Controller
             'is_read'      => false,
         ]);
 
-        if ($product->seller?->email) {
-            Mail::to($product->seller->email)->send(new ProductApprovedMail($product));
-        }
+        Mailer::send($product->seller?->email, new ProductApprovedMail($product));
 
         return response()->json([
             'message' => 'Product approved successfully.',
@@ -429,9 +428,7 @@ class ProductManagerController extends Controller
             'is_read'      => false,
         ]);
 
-        if ($product->seller?->email) {
-            Mail::to($product->seller->email)->send(new ProductRejectedMail($product));
-        }
+        Mailer::send($product->seller?->email, new ProductRejectedMail($product));
 
         return response()->json([
             'message' => 'Product rejected and seller has been notified.',

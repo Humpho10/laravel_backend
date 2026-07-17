@@ -76,6 +76,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'product-approve',
             'product-reject',
 
+            // Contact Messages (Admin)
+            'contact-view',
+            'contact-reply',
+
             // ── PRODUCT MANAGER PERMISSIONS ──────────────────
             // Product Management (scoped)
             'product-list',
@@ -143,6 +147,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'notification-view',
             'notification-mark-read',
             'notification-delete',
+            'contact-view',
+            'contact-reply',
         ]);
 
         // ── PRODUCT MANAGER ──────────────────────────────────

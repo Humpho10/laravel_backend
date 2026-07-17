@@ -13,7 +13,6 @@ class ProductManagerCreatedMail extends Mailable
     public function __construct(
         public string $name,
         public string $email,
-        public string $password,
     ) {}
 
     public function build()
@@ -24,7 +23,6 @@ class ProductManagerCreatedMail extends Mailable
             ->view('emails.pm_created', [
                 'name'     => $this->name,
                 'email'    => $this->email,
-                'password' => $this->password,
                 'loginUrl' => $loginUrl,
             ]);
     }

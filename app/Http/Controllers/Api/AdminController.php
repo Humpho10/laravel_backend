@@ -18,6 +18,7 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use Illuminate\Support\Facades\Auth;
 use App\Helpers\AuditLogger;
+use App\Helpers\EmailVerifier;
 use Spatie\Permission\PermissionRegistrar;
 use Carbon\Carbon;
 
@@ -331,6 +332,8 @@ class AdminController extends Controller
         ]);
 
         $user->assignRole('Admin');
+
+        EmailVerifier::send($user);
 
         $this->notifySuperAdmins(
             'admin_created',

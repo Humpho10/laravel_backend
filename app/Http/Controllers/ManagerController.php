@@ -11,8 +11,10 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductManagerAssignment;
 use App\Models\SubCategory; // 👈 Added for clarity
 use App\Helpers\AuditLogger;
+use App\Helpers\EmailVerifier;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use App\Helpers\Mailer;
 use Illuminate\Support\Facades\Auth;
 use App\Mail\ProductApprovedMail;
 use App\Mail\ProductRejectedMail;
@@ -97,9 +99,7 @@ class ManagerController extends Controller
 
         AuditLogger::log('users', $user->id, 'updated', $oldValue, $user->toArray());
 
-        if ($user->email) {
-            Mail::to($user->email)->send(new UserDeactivatedMail($user));
-        }
+        Mailer::send($user->email, new UserDeactivatedMail($user));
 
         return response()->json([
             'message' => "{$user->name} has been deactivated.",
@@ -122,9 +122,7 @@ class ManagerController extends Controller
 
         AuditLogger::log('users', $user->id, 'updated', $oldValue, $user->toArray());
 
-        if ($user->email) {
-            Mail::to($user->email)->send(new UserActivatedMail($user));
-        }
+        Mailer::send($user->email, new UserActivatedMail($user));
 
         return response()->json([
             'message' => "{$user->name} has been reactivated.",
@@ -154,7 +152,6 @@ class ManagerController extends Controller
             'password'          => Hash::make($validated['password']),
             'phone'             => $validated['phone'] ?? null,
             'location'          => $validated['location'] ?? null,
-            'email_verified_at' => now(),
             'is_active'         => true,
         ]);
 
@@ -169,20 +166,20 @@ class ManagerController extends Controller
 
         AuditLogger::log('users', $pm->id, 'created', null, $pm->toArray());
 
-        // Send email notification
-        $plainPassword = $validated['password'];
-        try {
-            Mail::to($pm->email)->send(new ProductManagerCreatedMail($pm->name, $pm->email, $plainPassword));
-        } catch (\Exception $e) {
-            // Silently log — don't fail the request
-        }
+        // Send email notification (non-fatal — creating the PM must succeed
+        // even if the welcome email can't be delivered).
+        Mailer::send($pm->email, new ProductManagerCreatedMail($pm->name, $pm->email));
+
+        // Must verify their email before they can log in — send the same
+        // link-based verification flow used everywhere else in the app.
+        EmailVerifier::send($pm);
 
         // Send in-app notification
         Notification::create([
             'user_id'      => $pm->id,
             'type'         => 'account_created',
             'reference_id' => $pm->id,
-            'message'      => 'Your Product Manager account has been created. You can now log in.',
+            'message'      => 'Your Product Manager account has been created. Please check your email to verify your account before logging in.',
             'is_read'      => false,
         ]);
 
@@ -591,9 +588,7 @@ class ManagerController extends Controller
             'is_read'      => false,
         ]);
 
-        if ($product->seller?->email) {
-            Mail::to($product->seller->email)->send(new ProductApprovedMail($product));
-        }
+        Mailer::send($product->seller?->email, new ProductApprovedMail($product));
 
         return response()->json([
             'message' => 'Product approved successfully.',
@@ -647,9 +642,7 @@ class ManagerController extends Controller
             'is_read'      => false,
         ]);
 
-        if ($product->seller?->email) {
-            Mail::to($product->seller->email)->send(new ProductRejectedMail($product));
-        }
+        Mailer::send($product->seller?->email, new ProductRejectedMail($product));
 
         return response()->json([
             'message' => 'Product rejected and seller has been notified.',

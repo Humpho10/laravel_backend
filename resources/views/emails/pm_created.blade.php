@@ -18,16 +18,13 @@
         </div>
         <div class="body">
             <p>Hello <strong>{{ $name }}</strong>,</p>
-            <p>Your Product Manager account has been created on E-Waste Mart. You can now log in and start managing product listings in your assigned categories.</p>
+            <p>Your Product Manager account has been created on E-Waste Mart for <strong>{{ $email }}</strong>.</p>
 
             <div class="credentials">
-                <p><strong>Your Login Credentials:</strong></p>
-                <p>Email: <strong>{{ $email }}</strong></p>
-                <p>Password: <strong>{{ $password }}</strong></p>
+                <p>Check your inbox for a separate <strong>"Verify your E-Waste Mart account"</strong> email and click the link to activate your account. The admin who created your account will share your password with you directly.</p>
             </div>
 
-            <p>Please log in and change your password as soon as possible.</p>
-            <p>Login at: <a href="{{ $loginUrl }}">E-Waste Mart</a></p>
+            <p>Once verified, log in at: <a href="{{ $loginUrl }}">E-Waste Mart</a></p>
         </div>
         <div class="footer">
             <p>© 2026 E-Waste Mart. Promoting circular economy through e-waste management.</p>
