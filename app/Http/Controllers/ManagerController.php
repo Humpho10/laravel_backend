@@ -32,6 +32,34 @@ class ManagerController extends Controller
         return $user;
     }
 
+    // ── Helper: notify a single Product Manager ───────────────
+    // Used whenever the Operations Manager makes a change that affects a
+    // specific PM (e.g. assigning/removing one of their categories).
+    protected function notifyManager(int $pmId, string $message, ?int $referenceId = null, string $type = 'category_update'): void
+    {
+        Notification::create([
+            'user_id'      => $pmId,
+            'type'         => $type,
+            'reference_id' => $referenceId,
+            'message'      => $message,
+            'is_read'      => false,
+        ]);
+    }
+
+    // ── Helper: notify every PM assigned to a category ────────
+    // Used when a category (or its subcategories) is edited/removed, so all
+    // PMs responsible for it are told about the change on their side.
+    protected function notifyCategoryManagers(int $categoryId, string $message, string $type = 'category_update'): void
+    {
+        $pmIds = ProductManagerAssignment::where('category_id', $categoryId)
+            ->pluck('product_manager_id')
+            ->unique();
+
+        foreach ($pmIds as $pmId) {
+            $this->notifyManager($pmId, $message, $categoryId, $type);
+        }
+    }
+
     // ── LIST USERS ────────────────────────────────────────────
     public function listUsers(Request $request)
     {
@@ -228,6 +256,14 @@ class ManagerController extends Controller
 
         AuditLogger::log('product_manager_assignments', $assignment->id, 'created', null, $assignment->toArray());
 
+        // Let the PM know a new category was added to their responsibilities.
+        $category = Category::find($validated['category_id']);
+        $this->notifyManager(
+            (int) $validated['product_manager_id'],
+            "You have been assigned to the category \"{$category->name}\".",
+            (int) $validated['category_id']
+        );
+
         return response()->json([
             'message'    => 'Category assigned successfully.',
             'assignment' => $assignment->load([
@@ -246,10 +282,21 @@ class ManagerController extends Controller
 
         $assignment = ProductManagerAssignment::findOrFail($id);
 
-        $oldValue = $assignment->toArray();
+        $oldValue     = $assignment->toArray();
+        $pmId         = (int) $assignment->product_manager_id;
+        $categoryId   = (int) $assignment->category_id;
+        $categoryName = optional(Category::find($categoryId))->name ?? 'a category';
+
         $assignment->delete();
 
         AuditLogger::log('product_manager_assignments', $id, 'deleted', $oldValue, null);
+
+        // Tell the PM one of their categories was removed.
+        $this->notifyManager(
+            $pmId,
+            "The category \"{$categoryName}\" has been removed from your assignments.",
+            $categoryId
+        );
 
         return response()->json([
             'message' => 'Assignment removed successfully.'
@@ -328,6 +375,17 @@ class ManagerController extends Controller
         $assignments = ProductManagerAssignment::where('product_manager_id', $pm->id)
             ->with('category:category_id,name')
             ->get();
+
+        // Notify the PM that their account/categories were updated, and list
+        // the categories they're now responsible for.
+        $categoryNames = $assignments->pluck('category.name')->filter()->implode(', ');
+        $this->notifyManager(
+            $pm->id,
+            'Your account was updated by management.'
+                . ($categoryNames !== '' ? " Your categories are now: {$categoryNames}." : ''),
+            null,
+            'account_update'
+        );
 
         return response()->json([
             'message'         => 'Product Manager updated successfully.',
@@ -416,9 +474,18 @@ class ManagerController extends Controller
         ]);
 
         $oldValue = $category->toArray();
+        $oldName  = $category->name;
         $category->update(['name' => $validated['name']]);
 
         AuditLogger::log('categories', $category->category_id, 'updated', $oldValue, $category->toArray());
+
+        // Notify the PMs assigned to this category that it was renamed.
+        if ($oldName !== $category->name) {
+            $this->notifyCategoryManagers(
+                (int) $category->category_id,
+                "The category \"{$oldName}\" was renamed to \"{$category->name}\"."
+            );
+        }
 
         return response()->json([
             'message'  => 'Category updated successfully.',
@@ -440,10 +507,25 @@ class ManagerController extends Controller
             ], 400);
         }
 
-        $oldValue = $category->toArray();
+        $oldValue     = $category->toArray();
+        $categoryName = $category->name;
+
+        // Capture affected PMs *before* deleting, since their assignment rows
+        // may be cascaded away with the category.
+        $affectedPmIds = ProductManagerAssignment::where('category_id', $category->category_id)
+            ->pluck('product_manager_id')
+            ->unique();
+
         $category->delete();
 
         AuditLogger::log('categories', $id, 'deleted', $oldValue, null);
+
+        foreach ($affectedPmIds as $pmId) {
+            $this->notifyManager(
+                (int) $pmId,
+                "The category \"{$categoryName}\" you managed has been deleted."
+            );
+        }
 
         return response()->json([
             'message' => 'Category deleted successfully.'
@@ -470,6 +552,12 @@ class ManagerController extends Controller
 
         AuditLogger::log('sub_categories', $sub->subcategory_id, 'created', null, $sub->toArray());
 
+        // Notify the PMs responsible for the parent category.
+        $this->notifyCategoryManagers(
+            (int) $category->category_id,
+            "A new subcategory \"{$validated['name']}\" was added to your category \"{$category->name}\"."
+        );
+
         return response()->json([
             'message'     => 'Subcategory added successfully.',
             'subcategory' => $sub,
@@ -484,9 +572,20 @@ class ManagerController extends Controller
 
         $sub = SubCategory::findOrFail($id);
         $old = $sub->toArray();
+
+        $categoryId   = (int) $sub->category_id;
+        $subName      = $sub->sub_category_name;
+        $categoryName = optional(Category::find($categoryId))->name ?? 'your category';
+
         $sub->delete();
 
         AuditLogger::log('sub_categories', $id, 'deleted', $old, null);
+
+        // Notify the PMs responsible for the parent category.
+        $this->notifyCategoryManagers(
+            $categoryId,
+            "The subcategory \"{$subName}\" was removed from your category \"{$categoryName}\"."
+        );
 
         return response()->json([
             'message' => 'Subcategory removed successfully.'
