@@ -53,7 +53,7 @@ Route::post('/search/image', [ImageSearchController::class, 'search'])->middlewa
 
 // ── SUPER ADMIN ROUTES ───────────────────────────────────────
 // These require permissions that only Super Admin has (or anyone with these specific permissions)
-Route::middleware(['auth:sanctum', 'check.permissions:user-list,role-list,permission-list,audit-list'])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
     // Dashboard
     Route::get('/stats', [AdminController::class, 'stats']);
 
@@ -101,7 +101,7 @@ Route::middleware(['auth:sanctum', 'check.permissions:user-list,role-list,permis
 
 // ── ADMIN (Operations Manager) ROUTES ────────────────────────
 // These require permissions that an Admin/Manager typically has
-Route::middleware(['auth:sanctum', 'check.permissions:category-list,product-list,user-list'])->prefix('manager')->group(function () {
+Route::middleware(['auth:sanctum', 'manager'])->prefix('manager')->group(function () {
     // Dashboard
     Route::get('/stats', [ManagerController::class, 'stats']);
     Route::get('/stats/trends', [ManagerController::class, 'trends']); // ← new
@@ -140,7 +140,7 @@ Route::middleware(['auth:sanctum', 'check.permissions:category-list,product-list
     Route::post('/profile', [ManagerController::class, 'updateProfile']);
 
     // ── Messages ───────────────────────────────────────────
-    Route::get('/manager/messages', [ManagerController::class, 'getMessages'])->middleware('can:message-view');
+    Route::get('/messages', [ManagerController::class, 'getMessages'])->middleware('can:message-view');
 
     // ── Contact Messages ───────────────────────────────────
     Route::get('/contact-messages',             [ContactMessageController::class, 'index'])->middleware('can:contact-view');
@@ -150,7 +150,7 @@ Route::middleware(['auth:sanctum', 'check.permissions:category-list,product-list
 
 // ── PRODUCT MANAGER ROUTES ──────────────────────────────────
 // These require permissions that a Product Manager typically has
-Route::middleware(['auth:sanctum', 'check.permissions:product-list,product-approve'])->prefix('pm')->group(function () {
+Route::middleware(['auth:sanctum', 'pm'])->prefix('pm')->group(function () {
     // Dashboard
     Route::get('/stats', [ProductManagerController::class, 'stats']);
 
